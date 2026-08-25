@@ -6,6 +6,13 @@
 pip install iikocloudapi
 ```
 
+Команда выше устанавливает публичный пакет. Для AI Waiter используйте fork с
+уникальной версией и обязательно закрепляйте reviewed commit SHA:
+
+```
+pip install "iikocloudapi @ git+https://github.com/yurisenik/iikocloudapi.git@<reviewed-commit-sha>"
+```
+
 ## Как работает
 
 Примеры запросов и названия методов:
@@ -13,6 +20,10 @@ pip install iikocloudapi
 - /api/1/organizations - `iiko_client.organizations(...)`
 - /api/1/organizations/settings - `iiko_client.organizations.settings(...)`
 - /api/1/order/create - `iiko_client.orders.create(...)`
+- /api/1/order/by_table - `iiko_client.orders.by_table(...)`
+- /api/1/stop_lists/check - `iiko_client.menu.stop_lists_check(...)`
+- /api/1/webhooks/settings - `iiko_client.webhooks.settings(...)`
+- /api/1/webhooks/update_settings - `iiko_client.webhooks.update_settings(...)`
 
 
 ## Пример использования
@@ -68,5 +79,13 @@ if __name__ == "__main__":
     - [x] [Calculate combo price.](https://api-ru.iiko.services/#tag/Menu/paths/~1api~11~1combo~1calculate/post)
 - [Orders](https://api-ru.iiko.services/#tag/Orders)
     - [x] [Create table order.](https://api-ru.iiko.services/#tag/Orders/paths/~1api~11~1order~1create/post)
+    - [x] [Retrieve orders by IDs.](https://api-ru.iiko.services/#tag/Orders/paths/~1api~11~1order~1by_id/post)
+    - [x] [Retrieve orders by tables.](https://api-ru.iiko.services/#tag/Orders/paths/~1api~11~1order~1by_table/post)
+    - [x] [Add items to table order.](https://api-ru.iiko.services/#tag/Orders/paths/~1api~11~1order~1add_items/post)
+    - [x] [Change table order payments.](https://api-ru.iiko.services/#tag/Orders/paths/~1api~11~1order~1change_payments/post)
+    - [x] [Close table order.](https://api-ru.iiko.services/#tag/Orders/paths/~1api~11~1order~1close/post)
+- [Webhooks](https://api-ru.iiko.services/#tag/Webhooks)
+    - [x] [Get webhook settings.](https://api-ru.iiko.services/#tag/Webhooks/paths/~1api~11~1webhooks~1settings/post)
+    - [x] [Update webhook settings.](https://api-ru.iiko.services/#tag/Webhooks/paths/~1api~11~1webhooks~1update_settings/post)
 - [Operations](https://api-ru.iiko.services/#tag/Operations)
     - [x] [Get status of command.](https://api-ru.iiko.services/#tag/Operations/paths/~1api~11~1commands~1status/post)

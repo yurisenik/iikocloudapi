@@ -1,10 +1,17 @@
+import asyncio
+
 import orjson
+from httpx import Response
 
 from iikocloudapi.modules.menu import (
     ComboCalculateResponse,
     ComboResponse,
+    Compound,
+    CompoundOrderItemComponent,
+    Menu,
     MenuByIdResponse,
     MenuResponse,
+    Product,
     StopListsCheckResponse,
     StopListsResponse,
 )
@@ -244,6 +251,107 @@ def test_stop_lists_response():
 
 def test_stop_lists_check_response():
     StopListsCheckResponse(**orjson.loads(stop_lists_check_json))
+
+
+def test_stop_lists_check_response_allows_omitted_rejected_items():
+    response = StopListsCheckResponse(correlationId="correlation-id")
+    assert response.rejected_items is None
+
+
+def test_stop_lists_check_rejected_item_allows_omitted_size():
+    response = StopListsCheckResponse.model_validate(
+        {
+            "correlationId": "correlation-id",
+            "rejectedItems": [{"productId": "product-id", "balance": 0}],
+        }
+    )
+    assert response.rejected_items is not None
+    assert response.rejected_items[0].size_id is None
+
+
+def test_stop_lists_check_product_uses_wire_aliases():
+    item = Product.model_validate(
+        {
+            "productId": "product-id",
+            "productSizeId": "size-id",
+            "amount": 2,
+            "price": 199.5,
+        }
+    )
+    assert item.model_dump(by_alias=True, exclude_none=True) == {
+        "type": "Product",
+        "amount": 2.0,
+        "productSizeId": "size-id",
+        "productId": "product-id",
+        "price": 199.5,
+    }
+
+
+def test_stop_lists_check_compound_uses_wire_aliases():
+    item = Compound.model_validate(
+        {
+            "amount": 1,
+            "productSizeId": "size-id",
+            "primaryComponent": CompoundOrderItemComponent.model_validate({"productId": "primary-id", "price": 250}),
+        }
+    )
+    assert item.model_dump(by_alias=True, exclude_none=True) == {
+        "type": "Compound",
+        "amount": 1.0,
+        "productSizeId": "size-id",
+        "primaryComponent": {"productId": "primary-id", "price": 250.0},
+    }
+
+
+class RecordingClient:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    async def request(self, path: str, data: dict, timeout=None) -> Response:
+        self.calls.append({"path": path, "data": data, "timeout": timeout})
+        return Response(200, content=orjson.dumps({"correlationId": "c", "rejectedItems": []}))
+
+
+def test_stop_lists_check_calls_expected_endpoint_with_wire_payload():
+    client = RecordingClient()
+    response = asyncio.run(
+        Menu(client).stop_lists_check(  # type: ignore[arg-type]
+            organization_id="organization-id",
+            terminal_group_id="terminal-group-id",
+            items=[
+                Product.model_validate(
+                    {
+                        "productId": "product-id",
+                        "productSizeId": "size-id",
+                        "amount": 2,
+                        "price": 199.5,
+                    }
+                )
+            ],
+            timeout=20,
+        )
+    )
+
+    assert response.rejected_items == []
+    assert client.calls == [
+        {
+            "path": "/api/1/stop_lists/check",
+            "data": {
+                "organizationId": "organization-id",
+                "terminalGroupId": "terminal-group-id",
+                "items": [
+                    {
+                        "type": "Product",
+                        "amount": 2.0,
+                        "productSizeId": "size-id",
+                        "productId": "product-id",
+                        "price": 199.5,
+                    }
+                ],
+            },
+            "timeout": 20,
+        }
+    ]
 
 
 def test_combo_response():

@@ -60,15 +60,13 @@ class OrderPaymentItem(BaseModel):
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    payment_type_kind: Literal[
-        "Cash", "Card", "Credit", "Writeoff", "Voucher", "External", "IikoCard"
-    ] = Field(alias="paymentTypeKind")
+    payment_type_kind: Literal["Cash", "Card", "Credit", "Writeoff", "Voucher", "External", "IikoCard"] = Field(
+        alias="paymentTypeKind"
+    )
     sum: float
     payment_type_id: str = Field(alias="paymentTypeId")
     is_processed_externally: bool | None = Field(default=None, alias="isProcessedExternally")
-    payment_additional_data: OrderPaymentAdditionalData | None = Field(
-        default=None, alias="paymentAdditionalData"
-    )
+    payment_additional_data: OrderPaymentAdditionalData | None = Field(default=None, alias="paymentAdditionalData")
     is_fiscalized_externally: bool | None = Field(default=None, alias="isFiscalizedExternally")
     is_prepay: bool | None = Field(default=None, alias="isPrepay")
 
@@ -78,16 +76,14 @@ class OrderTipItem(BaseModel):
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    payment_type_kind: Literal[
-        "Cash", "Card", "Credit", "Writeoff", "Voucher", "External", "IikoCard"
-    ] = Field(alias="paymentTypeKind")
+    payment_type_kind: Literal["Cash", "Card", "Credit", "Writeoff", "Voucher", "External", "IikoCard"] = Field(
+        alias="paymentTypeKind"
+    )
     tips_type_id: str | None = Field(default=None, alias="tipsTypeId")
     payment_type_id: str = Field(alias="paymentTypeId")
     sum: float
     is_processed_externally: bool | None = Field(default=None, alias="isProcessedExternally")
-    payment_additional_data: OrderPaymentAdditionalData | None = Field(
-        default=None, alias="paymentAdditionalData"
-    )
+    payment_additional_data: OrderPaymentAdditionalData | None = Field(default=None, alias="paymentAdditionalData")
     is_fiscalized_externally: bool | None = Field(default=None, alias="isFiscalizedExternally")
     is_prepay: bool | None = Field(default=None, alias="isPrepay")
 
@@ -143,9 +139,7 @@ class OrderCloseBody(BaseModel):
 
     organization_id: str = Field(alias="organizationId")
     order_id: str = Field(alias="orderId")
-    cheque_additional_info: dict[str, Any] | None = Field(
-        default=None, alias="chequeAdditionalInfo"
-    )
+    cheque_additional_info: dict[str, Any] | None = Field(default=None, alias="chequeAdditionalInfo")
 
 
 class OrderCloseResponse(BaseResponseModel):
@@ -249,9 +243,7 @@ class Orders:
 
         Ref: https://api-ru.iiko.services/#tag/Orders/paths/~1api~11~1order~1create/post
         """
-        order_payload = (
-            OrderCreateOrderPayload.model_validate(dict(order)) if isinstance(order, Mapping) else order
-        )
+        order_payload = OrderCreateOrderPayload.model_validate(dict(order)) if isinstance(order, Mapping) else order
         body = OrderCreateBody.model_validate(
             {
                 "organizationId": organization_id,
@@ -270,7 +262,10 @@ class Orders:
         cheque_additional_info: Mapping[str, Any] | None = None,
         timeout: str | int | None = None,
     ) -> OrderCloseResponse:
-        """Close an open table order. Async on iiko side: poll `/api/1/commands/status` with the returned `correlationId`.
+        """Close an open table order.
+
+        The operation is asynchronous on the iiko side. Poll `/api/1/commands/status`
+        with the returned `correlationId`.
 
         Note: closing does NOT add payment. Call `change_payments` first if the order is not fully paid.
 
@@ -304,13 +299,10 @@ class Orders:
         Ref: https://api-ru.iiko.services/#tag/Orders/paths/~1api~11~1order~1change_payments/post
         """
         norm_payments = [
-            p if isinstance(p, OrderPaymentItem) else OrderPaymentItem.model_validate(dict(p))
-            for p in payments
+            p if isinstance(p, OrderPaymentItem) else OrderPaymentItem.model_validate(dict(p)) for p in payments
         ]
         norm_tips = (
-            [t if isinstance(t, OrderTipItem) else OrderTipItem.model_validate(dict(t)) for t in tips]
-            if tips
-            else None
+            [t if isinstance(t, OrderTipItem) else OrderTipItem.model_validate(dict(t)) for t in tips] if tips else None
         )
         body = OrderChangePaymentsBody.model_validate(
             {
@@ -338,8 +330,7 @@ class Orders:
         Ref: https://api-ru.iiko.services/#tag/Orders/paths/~1api~11~1order~1add_items/post
         """
         norm_items = [
-            it if isinstance(it, OrderCreateItem) else OrderCreateItem.model_validate(dict(it))
-            for it in items
+            it if isinstance(it, OrderCreateItem) else OrderCreateItem.model_validate(dict(it)) for it in items
         ]
         body = OrderAddItemsBody.model_validate(
             {
