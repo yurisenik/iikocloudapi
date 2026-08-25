@@ -10,6 +10,8 @@ All notable changes to this project will be documented in this file. See [conven
 - add typed stop-list preflight request items and nullable rejected-items response;
 - add get/update webhook settings and `StopListUpdate` event models;
 - add table-order query, payment, add-items and close methods from the maintained fork branch;
+- align external payment, change-payments, by-id and compound add-items payloads with the current iiko OpenAPI;
+- treat the former empty stop-list item placeholders and invalid payment/revision fields as intentional breaking cleanup;
 - publish unique package metadata so pip can distinguish the fork from PyPI `0.4.0`.
 
 ---

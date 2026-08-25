@@ -61,6 +61,23 @@ def test_get_settings_preserves_filters_and_auth_token():
     ]
 
 
+def test_get_settings_accepts_empty_short_filter_from_openapi_readback():
+    client = RecordingClient(
+        {
+            "correlationId": "correlation-id",
+            "apiLoginName": "login-name",
+            "webHooksUri": "https://example.invalid/iiko-webhook",
+            "webHooksFilter": {"stopListUpdateFilter": {}},
+        }
+    )
+
+    response = asyncio.run(Webhooks(client).settings("organization-id"))  # type: ignore[arg-type]
+
+    assert response.web_hooks_filter is not None
+    assert response.web_hooks_filter.stop_list_update_filter is not None
+    assert response.web_hooks_filter.stop_list_update_filter.updates is None
+
+
 def test_update_settings_sends_complete_filter_with_wire_aliases():
     client = RecordingClient({"correlationId": "correlation-id"})
     filters = WebHooksFilter.model_validate(

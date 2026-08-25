@@ -1,6 +1,7 @@
 import asyncio
 
 import orjson
+import pytest
 from httpx import Response
 
 from iikocloudapi.modules.orders import (
@@ -12,6 +13,8 @@ from iikocloudapi.modules.orders import (
     OrderCloseResponse,
     OrderCreateBody,
     OrderCreateResponse,
+    OrderPaymentAdditionalData,
+    OrderPaymentItem,
     OrderQueryResponse,
     Orders,
 )
@@ -109,8 +112,8 @@ def test_order_create_with_external_payment_pay_first():
                         "paymentTypeId": "external-payment-type-uuid",
                         "isProcessedExternally": True,
                         "paymentAdditionalData": {
-                            "credentials": "tbank-payment-id-123",
-                            "type": "TBank",
+                            "type": "External",
+                            "customData": "provider-payment-reference-123",
                         },
                         "isFiscalizedExternally": False,
                     }
@@ -122,8 +125,47 @@ def test_order_create_with_external_payment_pay_first():
     payment = dumped["order"]["payments"][0]
     assert payment["paymentTypeKind"] == "External"
     assert payment["isProcessedExternally"] is True
-    assert payment["paymentAdditionalData"]["credentials"] == "tbank-payment-id-123"
+    assert payment["paymentAdditionalData"] == {
+        "type": "External",
+        "customData": "provider-payment-reference-123",
+    }
     assert payment["sum"] == 199.5
+
+
+def test_external_payment_additional_data_requires_openapi_custom_data():
+    with pytest.raises(ValueError, match="customData is required"):
+        OrderPaymentAdditionalData.model_validate({"type": "External"})
+
+
+def test_external_payment_additional_data_rejects_legacy_credentials():
+    with pytest.raises(ValueError, match="credentials"):
+        OrderPaymentAdditionalData.model_validate(
+            {
+                "type": "External",
+                "customData": "provider-reference",
+                "credentials": "legacy-invalid-field",
+            }
+        )
+
+
+def test_payment_type_kind_matches_openapi_discriminator():
+    payment = OrderPaymentItem.model_validate(
+        {
+            "paymentTypeKind": "LoyaltyCard",
+            "sum": 10,
+            "paymentTypeId": "loyalty-payment-type",
+        }
+    )
+    assert payment.payment_type_kind == "LoyaltyCard"
+
+    with pytest.raises(ValueError, match="paymentTypeKind"):
+        OrderPaymentItem.model_validate(
+            {
+                "paymentTypeKind": "IikoCard",
+                "sum": 10,
+                "paymentTypeId": "legacy-payment-type",
+            }
+        )
 
 
 def test_order_close_body_minimal():
@@ -154,7 +196,6 @@ def test_order_change_payments_body_serializes_payments_list():
         {
             "organizationId": "org",
             "orderId": "ord",
-            "revision": 12,
             "payments": [
                 {
                     "paymentTypeKind": "External",
@@ -166,10 +207,22 @@ def test_order_change_payments_body_serializes_payments_list():
         }
     )
     dumped = body.model_dump(by_alias=True, exclude_none=True)
-    assert dumped["revision"] == 12
+    assert "revision" not in dumped
     assert dumped["payments"][0]["paymentTypeKind"] == "External"
     assert dumped["payments"][0]["isProcessedExternally"] is True
     assert dumped["payments"][0]["sum"] == 500.0
+
+
+def test_order_change_payments_rejects_non_openapi_revision():
+    with pytest.raises(ValueError, match="revision"):
+        OrderChangePaymentsBody.model_validate(
+            {
+                "organizationId": "org",
+                "orderId": "ord",
+                "revision": 12,
+                "payments": [],
+            }
+        )
 
 
 def test_order_add_items_body_round_trips_items():
@@ -177,7 +230,7 @@ def test_order_add_items_body_round_trips_items():
         {
             "organizationId": "org",
             "orderId": "ord",
-            "items": [{"productId": "pid", "amount": 2, "type": "Product"}],
+            "items": [{"productId": "pid", "amount": 2, "price": 99.5, "type": "Product"}],
         }
     )
     dumped = body.model_dump(by_alias=True, exclude_none=True)
@@ -186,10 +239,76 @@ def test_order_add_items_body_round_trips_items():
     assert dumped["items"][0]["type"] == "Product"
 
 
+def test_order_add_items_body_accepts_openapi_compound_item_without_product_id():
+    body = OrderAddItemsBody.model_validate(
+        {
+            "organizationId": "org",
+            "orderId": "ord",
+            "items": [
+                {
+                    "type": "Compound",
+                    "amount": 1,
+                    "primaryComponent": {
+                        "productId": "primary-product",
+                        "price": 120,
+                        "modifiers": [{"productId": "modifier", "amount": 1}],
+                    },
+                    "secondaryComponent": {"productId": "secondary-product"},
+                }
+            ],
+        }
+    )
+    dumped = body.model_dump(by_alias=True, exclude_none=True)
+    assert dumped["items"][0] == {
+        "type": "Compound",
+        "amount": 1.0,
+        "primaryComponent": {
+            "productId": "primary-product",
+            "modifiers": [{"productId": "modifier", "amount": 1.0}],
+            "price": 120.0,
+        },
+        "secondaryComponent": {"productId": "secondary-product"},
+    }
+
+
 def test_order_by_id_body_serializes():
     body = OrderByIdBody.model_validate({"organizationIds": ["o1"], "orderIds": ["ord1", "ord2"]})
     dumped = body.model_dump(by_alias=True, exclude_none=True)
     assert dumped == {"organizationIds": ["o1"], "orderIds": ["ord1", "ord2"]}
+
+
+def test_order_by_id_body_accepts_pos_ids_and_external_data_keys():
+    body = OrderByIdBody.model_validate(
+        {
+            "organizationIds": ["o1"],
+            "posOrderIds": ["pos-1"],
+            "returnExternalDataKeys": ["source-reference"],
+        }
+    )
+    dumped = body.model_dump(by_alias=True, exclude_none=True)
+    assert dumped == {
+        "organizationIds": ["o1"],
+        "posOrderIds": ["pos-1"],
+        "returnExternalDataKeys": ["source-reference"],
+    }
+
+
+@pytest.mark.parametrize(
+    ("order_ids", "pos_order_ids"),
+    [
+        (None, None),
+        (["order-1"], ["pos-1"]),
+    ],
+)
+def test_order_by_id_body_requires_exactly_one_id_kind(order_ids, pos_order_ids):
+    with pytest.raises(ValueError, match="exactly one"):
+        OrderByIdBody.model_validate(
+            {
+                "organizationIds": ["o1"],
+                "orderIds": order_ids,
+                "posOrderIds": pos_order_ids,
+            }
+        )
 
 
 def test_order_by_table_body_with_statuses_filter():
@@ -248,5 +367,67 @@ def test_orders_by_table_calls_expected_endpoint_with_wire_payload():
                 "dateFrom": "2026-08-25 09:00:00.000",
             },
             "timeout": 25,
+        }
+    ]
+
+
+def test_orders_by_id_calls_endpoint_with_pos_ids_and_external_keys():
+    client = RecordingClient()
+    response = asyncio.run(
+        Orders(client).by_id(  # type: ignore[arg-type]
+            organization_ids=["organization-id"],
+            pos_order_ids=["pos-order-id"],
+            return_external_data_keys=["source-reference"],
+            timeout=30,
+        )
+    )
+
+    assert response.orders == []
+    assert client.calls == [
+        {
+            "path": "/api/1/order/by_id",
+            "data": {
+                "organizationIds": ["organization-id"],
+                "posOrderIds": ["pos-order-id"],
+                "returnExternalDataKeys": ["source-reference"],
+            },
+            "timeout": 30,
+        }
+    ]
+
+
+def test_orders_add_items_calls_endpoint_with_compound_wire_payload():
+    client = RecordingClient()
+    response = asyncio.run(
+        Orders(client).add_items(  # type: ignore[arg-type]
+            organization_id="organization-id",
+            order_id="order-id",
+            items=[
+                {
+                    "type": "Compound",
+                    "amount": 1,
+                    "primaryComponent": {"productId": "primary-product", "price": 120},
+                }
+            ],
+            timeout=35,
+        )
+    )
+
+    assert response.correlation_id == "c"
+    assert client.calls == [
+        {
+            "path": "/api/1/order/add_items",
+            "data": {
+                "organizationId": "organization-id",
+                "orderId": "order-id",
+                "items": [
+                    {
+                        "type": "Compound",
+                        "amount": 1.0,
+                        "primaryComponent": {"productId": "primary-product", "price": 120.0},
+                    }
+                ],
+            },
+            "timeout": 35,
         }
     ]

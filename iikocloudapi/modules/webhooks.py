@@ -13,7 +13,7 @@ class WebHookShortFilter(BaseModel):
 
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    updates: bool
+    updates: bool | None = None
 
 
 class WebHooksFilter(BaseModel):

@@ -1,8 +1,8 @@
 from collections.abc import Mapping
-from typing import Any, Literal
+from typing import Annotated, Any, Literal, Self
 
 import orjson
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from iikocloudapi.client import Client
 from iikocloudapi.helpers import BaseResponseModel
@@ -39,30 +39,51 @@ class OrderCreateGuests(BaseModel):
 
 
 class OrderPaymentAdditionalData(BaseModel):
-    """Optional acquiring/loyalty metadata attached to a payment line."""
+    """Discriminated acquiring/loyalty metadata attached to a payment line."""
 
-    model_config = ConfigDict(extra="allow", populate_by_name=True)
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
-    type: str | None = None
-    credentials: str | None = None
-    search_scope: str | None = Field(default=None, alias="searchScope")
+    type: Literal["Card", "LoyaltyCard", "External"]
+    number: str | None = None
+    custom_data: str | None = Field(default=None, alias="customData")
+    card_type: str | None = Field(default=None, alias="cardType")
+    credential: str | None = None
+    search_scope: Literal["Reserved", "Phone", "CardNumber", "CardTrack", "PaymentToken", "FindFaceId"] | None = Field(
+        default=None, alias="searchScope"
+    )
+
+    @model_validator(mode="after")
+    def validate_discriminated_fields(self) -> Self:
+        """Match the discriminator-specific schemas in the iiko OpenAPI contract."""
+        if self.type == "External":
+            if self.custom_data is None:
+                raise ValueError("customData is required for External payment additional data")
+            if any(value is not None for value in (self.number, self.card_type, self.credential, self.search_scope)):
+                raise ValueError("External payment additional data only accepts customData")
+        elif self.type == "LoyaltyCard":
+            if self.credential is None or self.search_scope is None:
+                raise ValueError("credential and searchScope are required for LoyaltyCard payment additional data")
+            if any(value is not None for value in (self.number, self.custom_data, self.card_type)):
+                raise ValueError("LoyaltyCard payment additional data only accepts credential and searchScope")
+        elif self.credential is not None or self.search_scope is not None:
+            raise ValueError("Card payment additional data does not accept loyalty credentials")
+        return self
 
 
 class OrderPaymentItem(BaseModel):
     """Payment line for `order.payments[]` (create) and `change_payments`.
 
-    `paymentTypeKind` is an enum from `/api/1/payment_types`. For T-Bank
-    (acquiring done outside iiko) use `External` with `isProcessedExternally=true`
-    and put the T-Bank PaymentId into `paymentAdditionalData.credentials`.
+    `paymentTypeKind` is an enum from `/api/1/payment_types`. For external
+    acquiring use `External` with `isProcessedExternally=true` and pass an
+    opaque provider reference as `paymentAdditionalData.customData` with
+    `paymentAdditionalData.type=External`.
 
     `paymentTypeId` is required by iiko (UUID from `/api/1/payment_types`).
     """
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    payment_type_kind: Literal["Cash", "Card", "Credit", "Writeoff", "Voucher", "External", "IikoCard"] = Field(
-        alias="paymentTypeKind"
-    )
+    payment_type_kind: Literal["Cash", "Card", "LoyaltyCard", "External"] = Field(alias="paymentTypeKind")
     sum: float
     payment_type_id: str = Field(alias="paymentTypeId")
     is_processed_externally: bool | None = Field(default=None, alias="isProcessedExternally")
@@ -76,9 +97,7 @@ class OrderTipItem(BaseModel):
 
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
-    payment_type_kind: Literal["Cash", "Card", "Credit", "Writeoff", "Voucher", "External", "IikoCard"] = Field(
-        alias="paymentTypeKind"
-    )
+    payment_type_kind: Literal["Cash", "Card", "External"] = Field(alias="paymentTypeKind")
     tips_type_id: str | None = Field(default=None, alias="tipsTypeId")
     payment_type_id: str = Field(alias="paymentTypeId")
     sum: float
@@ -158,7 +177,6 @@ class OrderChangePaymentsBody(BaseModel):
 
     organization_id: str = Field(alias="organizationId")
     order_id: str = Field(alias="orderId")
-    revision: int | None = None
     payments: list[OrderPaymentItem]
     tips: list[OrderTipItem] | None = None
 
@@ -169,6 +187,63 @@ class OrderChangePaymentsResponse(BaseResponseModel):
     model_config = ConfigDict(extra="allow", populate_by_name=True)
 
 
+class OrderAddItemModifier(BaseModel):
+    """Modifier in an item added to an existing order."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    product_id: str = Field(alias="productId")
+    amount: float
+    product_group_id: str | None = Field(default=None, alias="productGroupId")
+    price: float | None = None
+    position_id: str | None = Field(default=None, alias="positionId")
+
+
+class OrderAddItemComponent(BaseModel):
+    """Primary or secondary component of a compound order item."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    product_id: str = Field(alias="productId")
+    modifiers: list[OrderAddItemModifier] | None = None
+    price: float | None = None
+    position_id: str | None = Field(default=None, alias="positionId")
+
+
+class OrderAddProductItem(BaseModel):
+    """Product item accepted by `/api/1/order/add_items`."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    type: Literal["Product"]
+    amount: float
+    product_id: str = Field(alias="productId")
+    price: float
+    product_size_id: str | None = Field(default=None, alias="productSizeId")
+    combo_information: dict[str, Any] | None = Field(default=None, alias="comboInformation")
+    comment: str | None = None
+    modifiers: list[OrderAddItemModifier] | None = None
+    position_id: str | None = Field(default=None, alias="positionId")
+
+
+class OrderAddCompoundItem(BaseModel):
+    """Compound item accepted by `/api/1/order/add_items`."""
+
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    type: Literal["Compound"]
+    amount: float
+    primary_component: OrderAddItemComponent = Field(alias="primaryComponent")
+    secondary_component: OrderAddItemComponent | None = Field(default=None, alias="secondaryComponent")
+    common_modifiers: list[OrderAddItemModifier] | None = Field(default=None, alias="commonModifiers")
+    product_size_id: str | None = Field(default=None, alias="productSizeId")
+    combo_information: dict[str, Any] | None = Field(default=None, alias="comboInformation")
+    comment: str | None = None
+
+
+OrderAddItem = Annotated[OrderAddProductItem | OrderAddCompoundItem, Field(discriminator="type")]
+
+
 class OrderAddItemsBody(BaseModel):
     """Body for `POST /api/1/order/add_items`."""
 
@@ -176,7 +251,7 @@ class OrderAddItemsBody(BaseModel):
 
     organization_id: str = Field(alias="organizationId")
     order_id: str = Field(alias="orderId")
-    items: list[OrderCreateItem]
+    items: list[OrderAddItem]
     combos: list[dict[str, Any]] | None = None
 
 
@@ -192,8 +267,17 @@ class OrderByIdBody(BaseModel):
     model_config = ConfigDict(extra="forbid", populate_by_name=True)
 
     organization_ids: list[str] = Field(alias="organizationIds")
-    order_ids: list[str] = Field(alias="orderIds")
+    order_ids: list[str] | None = Field(default=None, alias="orderIds")
+    pos_order_ids: list[str] | None = Field(default=None, alias="posOrderIds")
     source_keys: list[str] | None = Field(default=None, alias="sourceKeys")
+    return_external_data_keys: list[str] | None = Field(default=None, alias="returnExternalDataKeys")
+
+    @model_validator(mode="after")
+    def validate_exactly_one_id_kind(self) -> Self:
+        """iiko requires exactly one of orderIds and posOrderIds."""
+        if (self.order_ids is None) == (self.pos_order_ids is None):
+            raise ValueError("exactly one of orderIds and posOrderIds is required")
+        return self
 
 
 class OrderByTableBody(BaseModel):
@@ -287,14 +371,13 @@ class Orders:
         organization_id: str,
         order_id: str,
         payments: list[OrderPaymentItem | Mapping[str, Any]],
-        revision: int | None = None,
         tips: list[OrderTipItem | Mapping[str, Any]] | None = None,
         timeout: str | int | None = None,
     ) -> OrderChangePaymentsResponse:
         """Replace `payments` (and optionally `tips`) on an existing open order. Async — track via `correlationId`.
 
-        Use this in cook-first flow after the T-Bank Confirm succeeds: attach an External payment that
-        references the T-Bank PaymentId, then call `close`.
+        In a cook-first flow, attach an External payment with its opaque provider
+        reference in `paymentAdditionalData.customData`, then call `close`.
 
         Ref: https://api-ru.iiko.services/#tag/Orders/paths/~1api~11~1order~1change_payments/post
         """
@@ -308,7 +391,6 @@ class Orders:
             {
                 "organizationId": organization_id,
                 "orderId": order_id,
-                "revision": revision,
                 "payments": [p.model_dump(by_alias=True, exclude_none=True) for p in norm_payments],
                 "tips": [t.model_dump(by_alias=True, exclude_none=True) for t in norm_tips] if norm_tips else None,
             }
@@ -321,7 +403,7 @@ class Orders:
         self,
         organization_id: str,
         order_id: str,
-        items: list[OrderCreateItem | Mapping[str, Any]],
+        items: list[OrderAddProductItem | OrderAddCompoundItem | Mapping[str, Any]],
         combos: list[Mapping[str, Any]] | None = None,
         timeout: str | int | None = None,
     ) -> OrderAddItemsResponse:
@@ -329,14 +411,14 @@ class Orders:
 
         Ref: https://api-ru.iiko.services/#tag/Orders/paths/~1api~11~1order~1add_items/post
         """
-        norm_items = [
-            it if isinstance(it, OrderCreateItem) else OrderCreateItem.model_validate(dict(it)) for it in items
-        ]
         body = OrderAddItemsBody.model_validate(
             {
                 "organizationId": organization_id,
                 "orderId": order_id,
-                "items": [it.model_dump(by_alias=True, exclude_none=True) for it in norm_items],
+                "items": [
+                    it.model_dump(by_alias=True, exclude_none=True) if isinstance(it, BaseModel) else dict(it)
+                    for it in items
+                ],
                 "combos": [dict(c) for c in combos] if combos else None,
             }
         )
@@ -347,9 +429,12 @@ class Orders:
     async def by_id(
         self,
         organization_ids: list[str],
-        order_ids: list[str],
+        order_ids: list[str] | None = None,
         source_keys: list[str] | None = None,
         timeout: str | int | None = None,
+        *,
+        pos_order_ids: list[str] | None = None,
+        return_external_data_keys: list[str] | None = None,
     ) -> OrderQueryResponse:
         """Get full order documents by id.
 
@@ -359,7 +444,9 @@ class Orders:
             {
                 "organizationIds": organization_ids,
                 "orderIds": order_ids,
+                "posOrderIds": pos_order_ids,
                 "sourceKeys": source_keys,
+                "returnExternalDataKeys": return_external_data_keys,
             }
         )
         payload = body.model_dump(by_alias=True, exclude_none=True)
