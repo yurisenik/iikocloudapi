@@ -7,6 +7,7 @@ from iikocloudapi.modules.operations import Operations
 from iikocloudapi.modules.orders import Orders
 from iikocloudapi.modules.organizations import Organizations
 from iikocloudapi.modules.terminal_groups import TerminalGroups
+from iikocloudapi.modules.webhooks import Webhooks
 
 
 class iikoCloudApi:
@@ -21,3 +22,4 @@ class iikoCloudApi:
         self.menu = Menu(self._client)
         self.operations = Operations(self._client)
         self.orders = Orders(self._client)
+        self.webhooks = Webhooks(self._client)

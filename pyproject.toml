@@ -1,12 +1,12 @@
 [tool.poetry]
 name = "iikocloudapi"
-version = "0.4.0"
+version = "0.4.0+aiwaiter.1"
 description = "iikoCloud API async client"
 authors = ["Deni Tazurkaev <sha256deni@gmail.com>"]
 license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/ZeroFlowTech/iikocloudapi"
-repository = "https://github.com/ZeroFlowTech/iikocloudapi"
+repository = "https://github.com/yurisenik/iikocloudapi"
 keywords = [
   "iiko",
   "iikocloud",
@@ -35,6 +35,7 @@ packages = [{ "include" = "iikocloudapi" }]
 
 [tool.poetry.urls]
 "Bug Tracker" = "https://github.com/ZeroFlowTech/iikocloudapi/issues"
+"Upstream" = "https://github.com/ZeroFlowTech/iikocloudapi"
 
 
 [tool.poetry.dependencies]

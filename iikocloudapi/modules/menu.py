@@ -1,9 +1,10 @@
 import enum
+from collections.abc import Sequence
 from decimal import Decimal
 from typing import Literal
 
 import orjson
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from iikocloudapi.client import Client
 from iikocloudapi.helpers import BaseResponseModel
@@ -132,21 +133,63 @@ class StopListsCheckResponse(BaseResponseModel):
     class RejectedItem(BaseModel):
         balance: Decimal
         product_id: str = Field(alias="productId")
-        size_id: str | None = Field(alias="sizeId")
+        size_id: str | None = Field(default=None, alias="sizeId")
         sku: str | None = None
         date_add: str | None = Field(None, alias="dateAdd")
 
-    rejected_items: list[RejectedItem] = Field(alias="rejectedItems")
+    rejected_items: list[RejectedItem] | None = Field(default=None, alias="rejectedItems")
 
 
-class Product(BaseModel):
-    # TODO: Add fields from https://api-ru.iiko.services/#tag/Menu/paths/~1api~11~1stop_lists~1check/post
-    pass
+class StopListCheckModifier(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    product_id: str = Field(alias="productId")
+    amount: float
+    product_group_id: str | None = Field(default=None, alias="productGroupId")
+    price: float | None = None
+    position_id: str | None = Field(default=None, alias="positionId")
 
 
-class Compound(BaseModel):
-    # TODO: Add fields from https://api-ru.iiko.services/#tag/Menu/paths/~1api~11~1stop_lists~1check/post
-    pass
+class StopListCheckComboInformation(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    combo_id: str = Field(alias="comboId")
+    combo_source_id: str = Field(alias="comboSourceId")
+    combo_group_id: str = Field(alias="comboGroupId")
+    combo_group_name: str | None = Field(default=None, alias="comboGroupName")
+
+
+class StopListCheckOrderItem(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    amount: float
+    product_size_id: str | None = Field(default=None, alias="productSizeId")
+    combo_information: StopListCheckComboInformation | None = Field(default=None, alias="comboInformation")
+    comment: str | None = None
+
+
+class Product(StopListCheckOrderItem):
+    type: Literal["Product"] = "Product"
+    product_id: str = Field(alias="productId")
+    modifiers: list[StopListCheckModifier] | None = None
+    price: float
+    position_id: str | None = Field(default=None, alias="positionId")
+
+
+class CompoundOrderItemComponent(BaseModel):
+    model_config = ConfigDict(extra="forbid", populate_by_name=True)
+
+    product_id: str = Field(alias="productId")
+    modifiers: list[StopListCheckModifier] | None = None
+    price: float | None = None
+    position_id: str | None = Field(default=None, alias="positionId")
+
+
+class Compound(StopListCheckOrderItem):
+    type: Literal["Compound"] = "Compound"
+    primary_component: CompoundOrderItemComponent = Field(alias="primaryComponent")
+    secondary_component: CompoundOrderItemComponent | None = Field(default=None, alias="secondaryComponent")
+    common_modifiers: list[StopListCheckModifier] | None = Field(default=None, alias="commonModifiers")
 
 
 class ItemStopListAdd(BaseModel):
@@ -315,7 +358,7 @@ class Menu:
         self,
         organization_id: str,
         terminal_group_id: str,
-        items: list[Product | Compound],
+        items: Sequence[Product | Compound],
         timeout: str | int | None = None,
     ) -> StopListsCheckResponse:
         """Check items in out-of-stock list.
@@ -336,7 +379,7 @@ class Menu:
             data={
                 "organizationId": organization_id,
                 "terminalGroupId": terminal_group_id,
-                "items": [item.model_dump() for item in items],
+                "items": [item.model_dump(by_alias=True, exclude_none=True) for item in items],
             },
             timeout=timeout,
         )

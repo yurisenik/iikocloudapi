@@ -3,6 +3,18 @@
 All notable changes to this project will be documented in this file. See [conventional commits](https://www.conventionalcommits.org/) for commit guidelines.
 
 ---
+## [0.4.0+aiwaiter.1] - 2026-08-25
+
+### AI Waiter fork
+
+- add typed stop-list preflight request items and nullable rejected-items response;
+- add get/update webhook settings and `StopListUpdate` event models;
+- add table-order query, payment, add-items and close methods from the maintained fork branch;
+- align external payment, change-payments, by-id and compound add-items payloads with the current iiko OpenAPI;
+- treat the former empty stop-list item placeholders and invalid payment/revision fields as intentional breaking cleanup;
+- publish unique package metadata so pip can distinguish the fork from PyPI `0.4.0`.
+
+---
 ## [0.4.1](https://github.com/ZeroFlowTech/iikocloudapi/compare/v0.4.0..v0.4.1) - 2025-06-05
 
 ### Bug Fixes
